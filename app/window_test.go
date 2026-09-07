@@ -85,6 +85,66 @@ func TestWindow_Frame_SkipsLayoutWhenClean(t *testing.T) {
 	}
 }
 
+type layoutAnimationTickerWidget struct {
+	widget.WidgetBase
+	ticks int
+}
+
+func newLayoutAnimationTickerWidget() *layoutAnimationTickerWidget {
+	w := &layoutAnimationTickerWidget{}
+	w.SetVisible(true)
+	w.SetEnabled(true)
+	return w
+}
+
+func (w *layoutAnimationTickerWidget) Layout(_ widget.Context, c geometry.Constraints) geometry.Size {
+	return c.Constrain(geometry.Sz(10, 10))
+}
+
+func (*layoutAnimationTickerWidget) Draw(widget.Context, widget.Canvas) {}
+
+func (*layoutAnimationTickerWidget) Event(widget.Context, event.Event) bool { return false }
+
+func (w *layoutAnimationTickerWidget) TickAnimation(widget.Context) { w.ticks++ }
+
+func TestWindow_FrameTicksCachedLayoutAnimations(t *testing.T) {
+	a := New()
+	w := a.Window()
+	ticker := newLayoutAnimationTickerWidget()
+	w.SetRoot(newContainerMock(ticker))
+
+	if len(w.animationTickers) != 1 || w.animationTickers[0] != ticker {
+		t.Fatalf("animation ticker cache = %v, want the nested ticker", w.animationTickers)
+	}
+	w.Frame()
+	w.Frame()
+	if ticker.ticks != 2 {
+		t.Fatalf("animation ticks = %d, want 2", ticker.ticks)
+	}
+
+	w.SetRoot(newMockWidget())
+	if len(w.animationTickers) != 0 {
+		t.Fatalf("animation ticker cache retained %d ticker(s) after root replacement", len(w.animationTickers))
+	}
+	for i, cached := range w.animationTickers[:cap(w.animationTickers)] {
+		if cached != nil {
+			t.Fatalf("animation ticker backing cache retained old ticker at index %d", i)
+		}
+	}
+}
+
+func TestTickAnimationsDoesNotAllocate(t *testing.T) {
+	ticker := newLayoutAnimationTickerWidget()
+	tickers := []widget.AnimationTicker{ticker}
+	ctx := widget.NewContext()
+
+	if allocs := testing.AllocsPerRun(100, func() {
+		tickAnimations(tickers, ctx)
+	}); allocs != 0 {
+		t.Fatalf("cached animation tick allocations = %.0f, want 0", allocs)
+	}
+}
+
 func TestWindow_Frame_RelayoutOnResize(t *testing.T) {
 	a := New()
 	w := a.Window()

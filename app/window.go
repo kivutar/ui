@@ -61,6 +61,11 @@ type Window struct {
 	overlays  *overlay.Stack
 	focusMgr  *ifocus.Manager
 
+	// animationTickers caches the layout-affecting animation widgets in the
+	// current root. Widget trees are rebuilt through SetRoot, so collecting
+	// them there avoids walking (and allocating through Children) every frame.
+	animationTickers []widget.AnimationTicker
+
 	// renderMode controls background ownership and incremental rendering.
 	// See RenderMode documentation for details.
 	renderMode RenderMode
@@ -385,6 +390,8 @@ func (w *Window) SetRoot(root widget.Widget) {
 		widget.MountTree(w.root, w.ctx)
 		widget.MarkRedrawInTree(w.root)
 	}
+	clear(w.animationTickers)
+	w.animationTickers = collectAnimationTickers(w.animationTickers[:0], w.root)
 }
 
 // Root returns the current root widget, or nil if none is set.
@@ -699,7 +706,7 @@ func (w *Window) Frame() {
 	// Layout must be a pure function of (constraints + widget state) for
 	// RelayoutBoundary correctness (Phase 5). Animation ticks mutate state
 	// (e.g., Collapsible.progress) so they must complete before layout reads it.
-	tickAnimationsInTree(w.root, w.ctx)
+	tickAnimations(w.animationTickers, w.ctx)
 
 	// Update scale factor (may change between frames on multi-monitor setups).
 	w.updateScale()
@@ -920,19 +927,29 @@ func (w *Window) syncContextFocusToManager() {
 	}
 }
 
-// tickAnimationsInTree walks the widget tree and calls TickAnimation on
-// widgets that implement [widget.AnimationTicker]. Called BEFORE layout
-// so that animation state is final when Layout reads it (Flutter pattern:
-// handleBeginFrame → Animate → handleDrawFrame → Layout).
-func tickAnimationsInTree(w widget.Widget, ctx widget.Context) {
+// collectAnimationTickers walks a newly installed widget tree and caches its
+// layout-affecting animation widgets. SetRoot is the structural update point
+// for a Window, so the steady-state frame path can tick the cache without
+// repeatedly allocating child slices.
+func collectAnimationTickers(dst []widget.AnimationTicker, w widget.Widget) []widget.AnimationTicker {
 	if w == nil {
-		return
+		return dst
 	}
 	if ticker, ok := w.(widget.AnimationTicker); ok {
-		ticker.TickAnimation(ctx)
+		dst = append(dst, ticker)
 	}
 	for _, child := range w.Children() {
-		tickAnimationsInTree(child, ctx)
+		dst = collectAnimationTickers(dst, child)
+	}
+	return dst
+}
+
+// tickAnimations advances cached animation widgets BEFORE layout so their
+// state is final when Layout reads it (Flutter pattern: handleBeginFrame →
+// Animate → handleDrawFrame → Layout).
+func tickAnimations(tickers []widget.AnimationTicker, ctx widget.Context) {
+	for _, ticker := range tickers {
+		ticker.TickAnimation(ctx)
 	}
 }
 
@@ -1010,6 +1027,7 @@ func (w *Window) Close() {
 		widget.UnmountTree(w.root)
 		w.root = nil
 	}
+	w.animationTickers = nil
 
 	// Clear references to prevent pinning unmounted widgets.
 	w.hoveredWidget = nil
