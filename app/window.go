@@ -1227,7 +1227,7 @@ func (w *Window) drawFullRepaint(canvas widget.Canvas) {
 //
 // The algorithm:
 //  1. Compute the union of all dirty regions for a single clip rect.
-//  2. Clear each dirty region with the theme background.
+//  2. Clear the expanded union with the theme background.
 //  3. Clip to the dirty union and draw the full tree. Widgets outside
 //     the clip early-exit from visibility checks, so only widgets
 //     overlapping dirty regions actually render.
@@ -1252,9 +1252,9 @@ func (w *Window) drawDirtyRegions(canvas widget.Canvas) {
 	// DrawRect would trigger the GPU SDF accelerator, queuing SDF shapes
 	// on the compositor canvas and blocking the non-MSAA blit-only fast
 	// path (ADR-016). FillRectDirect writes directly to the CPU pixmap.
-	for _, region := range regions {
-		canvas.FillRectDirect(region.Bounds, bg)
-	}
+	// Clear exactly the area we redraw, including padding and gaps between
+	// regions. Otherwise translucent content there blends over old pixels.
+	canvas.FillRectDirect(union, bg)
 
 	// Clip to dirty union and draw tree.
 	// Widgets outside the clip early-exit from isVisible checks,
