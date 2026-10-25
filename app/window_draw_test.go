@@ -846,3 +846,41 @@ func TestRenderMode_String(t *testing.T) {
 		}
 	}
 }
+
+func TestDrawTo_FrameworkManaged_OverlayRepaint(t *testing.T) {
+	a := New(WithRenderMode(RenderModeFrameworkManaged))
+	w := a.Window()
+	w.HandleResize(800, 600)
+	w.SetRoot(newDrawTrackingWidget(geometry.NewRect(0, 0, 800, 600)))
+	popup := newDrawTrackingWidget(geometry.NewRect(150, 200, 100, 160))
+	// The overlay draw must establish its screen origin just like root widgets.
+	popup.SetScreenOrigin(geometry.Point{})
+	manager := &windowOverlayManager{window: w}
+	manager.PushOverlay(popup, nil)
+	a.Frame()
+	w.DrawTo(&recordingCanvas{})
+
+	if w.HasDirtyOverlays() || w.DrawTo(&recordingCanvas{}) {
+		t.Fatal("unchanged overlay should not require a redraw")
+	}
+	for range 2 {
+		before := popup.drawCount
+		popup.SetNeedsRedraw(true)
+		if !w.HasDirtyOverlays() {
+			t.Fatal("overlay change did not request a repaint")
+		}
+		canvas := &recordingCanvas{}
+		if !w.DrawTo(canvas) || popup.drawCount != before+1 {
+			t.Fatal("dirty overlay was not repainted")
+		}
+		if !w.LastDirtyUnion().ContainsRect(popup.Bounds()) {
+			t.Fatalf("damage %v does not cover overlay %v", w.LastDirtyUnion(), popup.Bounds())
+		}
+		if canvas.clearCalls != 0 {
+			t.Fatal("overlay change unnecessarily repainted the full window")
+		}
+		if w.HasDirtyOverlays() || w.DrawTo(&recordingCanvas{}) {
+			t.Fatal("painted overlay kept requesting redraws")
+		}
+	}
+}

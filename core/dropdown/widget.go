@@ -49,6 +49,7 @@ func New(opts ...Option) *Widget {
 		painter:       DefaultPainter{},
 	}
 	w.cfg.maxVisibleItems = defaultMaxVisible
+	w.cfg.itemHeight = menuItemHeight
 	w.cfg.selectedIndex = -1
 
 	w.SetVisible(true)
@@ -196,6 +197,8 @@ func (w *Widget) Open(ctx widget.Context) {
 			w.selectItem(ctx, index)
 		},
 	)
+
+	w.menuWidget.itemHeight = w.cfg.itemHeight
 
 	// Position the menu below the trigger using screen-space bounds.
 	// ScreenBounds accounts for all parent transforms (scroll offsets, etc.).

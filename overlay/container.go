@@ -85,6 +85,7 @@ func (c *Container) Draw(ctx widget.Context, canvas widget.Canvas) {
 		canvas.DrawRect(c.Bounds(), scrim)
 	}
 	if c.content != nil {
+		widget.StampScreenOrigin(c.content, canvas)
 		c.content.Draw(ctx, canvas)
 	}
 }

@@ -1024,3 +1024,36 @@ func TestUnmount_CleansBindings(t *testing.T) {
 		t.Error("signal change after unmount should not mark widget dirty")
 	}
 }
+
+func TestItemHeight_LayoutPaintingAndSelection(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		height float32
+		want   float32
+	}{
+		{"compact", 22, 22},
+		{"zero", 0, 40},
+		{"negative", -1, 40},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			painter := &testPainter{}
+			dd := dropdown.New(dropdown.Items("One", "Two", "Three"),
+				dropdown.ItemHeight(tc.height), dropdown.PainterOpt(painter))
+			dd.SetBounds(geometry.NewRect(0, 0, 100, 22))
+			ctx := widget.NewContext()
+			om := setupOverlayManager(ctx)
+			dd.Open(ctx)
+			menu := om.lastWidget
+			menu.Draw(ctx, &recordingCanvas{})
+			st := painter.menuState
+			if st.ItemHeight != tc.want || st.Bounds.Height() != 3*tc.want {
+				t.Fatalf("row height=%v, menu=%v, want 3 rows of %v", st.ItemHeight, st.Bounds, tc.want)
+			}
+			p := geometry.Pt(st.Bounds.Min.X+10, st.Bounds.Min.Y+2.5*tc.want)
+			menu.Event(ctx, event.NewMouseEvent(event.MousePress, event.ButtonLeft, event.ButtonStateLeft, p, p, event.ModNone))
+			if dd.SelectedIndex() != 2 {
+				t.Fatalf("clicked last row: index=%d, want 2", dd.SelectedIndex())
+			}
+		})
+	}
+}

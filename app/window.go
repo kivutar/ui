@@ -1088,9 +1088,7 @@ func (w *Window) DrawTo(canvas widget.Canvas) bool {
 	}
 
 	// Collect dirty regions (always — for RepaintBoundary Intersects fast path).
-	w.dirtyTracker.Reset()
-	w.dirtyCollector.Collect(w.root)
-	w.dirtyTracker.Optimize()
+	w.CollectDirtyRegions()
 
 	var drawn bool
 	switch w.renderMode {
@@ -1154,6 +1152,7 @@ func (w *Window) drawHostManaged(canvas widget.Canvas) bool {
 
 	w.lastDrawStats = widget.DrawTree(w.root, w.ctx, canvas)
 
+	w.ClearOverlayRedraw()
 	w.overlays.Draw(w.ctx, canvas)
 	widget.ClearRedrawInTree(w.root)
 	w.needsRedraw = false
@@ -1188,6 +1187,7 @@ func (w *Window) drawFrameworkManaged(canvas widget.Canvas) bool {
 	// collector run. If cleared AFTER draw, the collector on the next
 	// frame sees NeedsRedraw=false and misses the widget.
 	widget.ClearRedrawInTree(w.root)
+	w.ClearOverlayRedraw()
 
 	w.ctx.SetDirtyTracker(w.dirtyTracker)
 	defer w.ctx.SetDirtyTracker(nil)
